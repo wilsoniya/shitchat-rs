@@ -6,7 +6,9 @@ use std::thread;
 use std::iter::IteratorExt;
 
 static document: &'static str = include_str!("index.html");
+static ws_guid: &'static str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
+#[derive(Show)]
 enum HTTPMethod {GET, PUT, POST}
 
 impl HTTPMethod {
@@ -20,49 +22,70 @@ impl HTTPMethod {
     }
 }
 
-struct Header<'a> {
-    key: &'a str,
-    value: &'a str,
+#[derive(Show)]
+struct Header {
+    key: String,
+    value: String,
 }
 
-struct Request<'a> {
+impl Header {
+    fn from_str(string: &str) -> Header {
+        let mut kv = string.splitn(1, ':');
+        let key = String::from_str(kv.next().unwrap());
+        let value = String::from_str(kv.next().unwrap().trim_left());
+        Header {
+            key: key, 
+            value: value,
+        }
+    }
+}
+
+struct Request {
     method: HTTPMethod,
-    path: &'a str,
-    protocol: &'a str,
-    headers: Vec<Header<'a>>, 
+    path: String,
+    protocol: String,
+    headers: Vec<Header>, 
+    stream: BufferedStream<TcpStream>,
 }
 
-impl<'a> Request<'a> {
-    fn new(request_lines: &'a Vec<String>) -> Request<'a> {
-        let first_line: &'a String = &request_lines[0];
+impl Request {
+    fn new(request_lines: &Vec<String>, stream: BufferedStream<TcpStream>) -> Request {
+        let first_line = request_lines[0].clone();
 
         let frags: Vec<&str> = first_line.as_slice().trim().split_str(" ").collect();
         let (method, path, protocol) = match frags.len() {
             3 => {
                 let method = HTTPMethod::from_str(frags[0]);
-                (method, frags[1], frags[2]) 
+                (method, String::from_str(frags[1]), String::from_str(frags[2])) 
             }
             _ => {
                 panic!("Malformed request: {}", first_line);
             }
         }; 
 
+        let headers = request_lines
+            .as_slice()[1..]
+            .iter()
+            .map(|h| {Header::from_str(h)})
+            .collect();
+
         Request{
             method: method, 
             path: path,
             protocol: protocol,
-            headers: Vec::new(),
+            headers: headers,
+            stream: stream,
         }
     }
 }
 
 
-fn render_response(content: &str) -> String {
+fn render_response(content: &str, status: u32) -> String {
+    let status_line = format!("HTTP/1.1 {} OK", status);
     let content_len = format!("Content-Length: {}", content.len());
 
     let mut response: Vec<&str> = Vec::new();
-    response.push("HTTP/1.1 200 OK");
-    response.push("Server: SHITCHAT/666");
+    response.push(status_line.as_slice());
     response.push("Connection: Close");
     response.push(content_len.as_slice());
     response.push("");
@@ -70,7 +93,35 @@ fn render_response(content: &str) -> String {
     response.connect("\r\n")
 } 
 
+fn index(request: &Request) -> (String, u32) {
+    (String::from_str(document), 200)
+}
+
+fn ws(request: &Request) -> (String, u32) {
+    println!("WEBSOCKETS R KEWL");
+    (String::from_str("fart"), 200)
+} 
+
+fn error_404(request: &Request) -> (String, u32) {
+    (String::from_str("Not Found"), 404)
+}
+
+fn error_500(request: &Request) -> (String, u32) {
+    (String::from_str("Internal Server Error"), 500)
+}
+
+fn route_request(request: &Request) -> (String, u32) {
+    let view_fn: fn(&Request) -> (String, u32) = match (&request.method, request.path.as_slice()) {
+        (&HTTPMethod::GET, "/") => index, 
+        (&HTTPMethod::GET, "/ws/") => ws, 
+        _ => error_404,
+    };
+
+    view_fn(request)
+}
+
 fn handle_client(mut stream: TcpStream) {
+    let mut stream2 = stream.clone();
     let mut buf = BufferedStream::new(stream);
     let mut request_lines = Vec::new();
 
@@ -90,11 +141,11 @@ fn handle_client(mut stream: TcpStream) {
         }
     }
 
-    let request = Request::new(&request_lines);
-
+    let request = Request::new(&request_lines, BufferedStream::new(stream2));
+    let (response, status) = route_request(&request); 
     println!("{}\n", request_lines.connect("\n"));
 
-    buf.write_all(render_response(document).as_bytes());
+    buf.write_all(render_response(response.as_slice(), status).as_bytes());
     drop(buf);
 }
 
