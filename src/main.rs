@@ -1,9 +1,17 @@
 #![feature(old_io)] 
 
+extern crate "rustc-serialize" as rustc_serialize;
+extern crate "sha1" as sha1;
+
 use std::old_io::{TcpListener, TcpStream, BufferedStream};
 use std::old_io::{Acceptor, Listener};
 use std::thread;
 use std::iter::IteratorExt;
+
+use rustc_serialize::base64::ToBase64;
+use rustc_serialize::base64::STANDARD;
+
+use sha1::Sha1;
 
 static document: &'static str = include_str!("index.html");
 static ws_guid: &'static str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -77,6 +85,17 @@ impl Request {
             stream: stream,
         }
     }
+
+    fn get_header(&self, name: &str) -> Option<String> {
+        let header = self.headers
+            .iter()
+            .filter(|h| { h.key.as_slice() == name })
+            .next();
+        match header {
+            Some(ref h) => Some(h.value.clone()),
+            None => None
+        }
+    }
 }
 
 
@@ -93,25 +112,59 @@ fn render_response(content: &str, status: u32) -> String {
     response.connect("\r\n")
 } 
 
-fn index(request: &Request) -> (String, u32) {
+fn index(request: &mut Request) -> (String, u32) {
     (String::from_str(document), 200)
 }
 
-fn ws(request: &Request) -> (String, u32) {
-    println!("WEBSOCKETS R KEWL");
-    (String::from_str("fart"), 200)
+fn verify_key(key: &String) -> String {
+    let mut key = key.clone();
+    key.push_str(ws_guid);
+    let mut sha = Sha1::new();
+    sha.update(key.as_bytes());
+    let digest: Vec<u8> = sha.digest();
+    digest.as_slice().to_base64(STANDARD)
+}
+
+fn ws(request: &mut Request) -> (String, u32) {
+    let ws_key = request.get_header("Sec-WebSocket-Key").unwrap();
+    let accept_key = verify_key(&ws_key);
+    let accept_key_header = format!("Sec-WebSocket-Accept: {}", accept_key);
+
+    println!("ws key: {}", ws_key);
+    println!("accept key: {}", accept_key); 
+
+    let mut response: Vec<&str> = Vec::new(); 
+
+    response.push("HTTP/1.1 101 Switching Protocols");
+    response.push("Upgrade: websocket");
+    response.push("Connection: Upgrade");
+    response.push(accept_key_header.as_slice());
+    response.push("Sec-WebSocket-Protocol: chat");
+    response.push("");
+
+    let res_str = response.connect("\r\n");
+    print!("{}", res_str);
+
+    request.stream.write_all(res_str.as_slice().as_bytes()); 
+    request.stream.flush();
+
+    for line in request.stream.lines() {
+        print!("{}", line.unwrap());
+    } 
+
+    (String::from_str("fin"), 200)
 } 
 
-fn error_404(request: &Request) -> (String, u32) {
+fn error_404(request: &mut Request) -> (String, u32) {
     (String::from_str("Not Found"), 404)
 }
 
-fn error_500(request: &Request) -> (String, u32) {
+fn error_500(request: &mut Request) -> (String, u32) {
     (String::from_str("Internal Server Error"), 500)
 }
 
-fn route_request(request: &Request) -> (String, u32) {
-    let view_fn: fn(&Request) -> (String, u32) = match (&request.method, request.path.as_slice()) {
+fn route_request(request: &mut Request) -> (String, u32) {
+    let view_fn: fn(&mut Request) -> (String, u32) = match (&request.method, request.path.as_slice()) {
         (&HTTPMethod::GET, "/") => index, 
         (&HTTPMethod::GET, "/ws/") => ws, 
         _ => error_404,
@@ -141,9 +194,9 @@ fn handle_client(mut stream: TcpStream) {
         }
     }
 
-    let request = Request::new(&request_lines, BufferedStream::new(stream2));
-    let (response, status) = route_request(&request); 
+    let mut request = Request::new(&request_lines, BufferedStream::new(stream2));
     println!("{}\n", request_lines.connect("\n"));
+    let (response, status) = route_request(&mut request); 
 
     buf.write_all(render_response(response.as_slice(), status).as_bytes());
     drop(buf);
@@ -173,5 +226,4 @@ fn server() -> () {
 
 fn main() {
     server();
-    println!("Hello, world!");
 }

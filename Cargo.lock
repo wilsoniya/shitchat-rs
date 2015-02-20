@@ -1,4 +1,18 @@
 [root]
 name = "shitchat"
 version = "0.0.1"
+dependencies = [
+ "rustc-serialize 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sha1 0.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "rustc-serialize"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "sha1"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
