@@ -7,6 +7,8 @@ use std::old_io::{TcpListener, TcpStream, BufferedStream};
 use std::old_io::{Acceptor, Listener};
 use std::thread;
 use std::iter::IteratorExt;
+use std::old_io::timer::sleep;
+use std::time::duration::Duration; 
 
 use rustc_serialize::base64::ToBase64;
 use rustc_serialize::base64::STANDARD;
@@ -130,9 +132,6 @@ fn ws(request: &mut Request) -> (String, u32) {
     let accept_key = verify_key(&ws_key);
     let accept_key_header = format!("Sec-WebSocket-Accept: {}", accept_key);
 
-    println!("ws key: {}", ws_key);
-    println!("accept key: {}", accept_key); 
-
     let mut response: Vec<&str> = Vec::new(); 
 
     response.push("HTTP/1.1 101 Switching Protocols");
@@ -141,6 +140,7 @@ fn ws(request: &mut Request) -> (String, u32) {
     response.push(accept_key_header.as_slice());
     response.push("Sec-WebSocket-Protocol: chat");
     response.push("");
+    response.push("");
 
     let res_str = response.connect("\r\n");
     print!("{}", res_str);
@@ -148,8 +148,23 @@ fn ws(request: &mut Request) -> (String, u32) {
     request.stream.write_all(res_str.as_slice().as_bytes()); 
     request.stream.flush();
 
+    sleep(Duration::seconds(1));
+
+    request.stream.write_str("farrrrrrrt");
+    println!("farrrrrrrt\r\n\r\n");
+
+    sleep(Duration::seconds(1));
+
     for line in request.stream.lines() {
-        print!("{}", line.unwrap());
+        print!("about to print a line...");
+        match line {
+            Ok(line) => {
+                println!("got line! {}", line);
+            }
+            Err(e) => {
+                println!("Error while getting line: {}", e);
+            }
+        }
     } 
 
     (String::from_str("fin"), 200)
