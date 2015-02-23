@@ -36,13 +36,12 @@ pub fn read_stream<T: Stream>(stream: &mut BufferedStream<T>) -> IoResult<Vec<u8
     let rsv: u8 = ((header & RSV_MASK) >> 12) as u8;
     let opcode: u8 = ((header & OPCODE_MASK) >> 8) as u8;
     let mask: bool = ((header & MASK_MASK) >> 7) == 1;
-    let mut payload_len: u64 = (header & PAYLOAD_LEN_MASK) as u64;
 
-    if payload_len == 126 {
-        payload_len = try!(stream.read_be_u16()) as u64;
-    } else if payload_len == 127 {
-        payload_len = try!(stream.read_be_u64());
-    }
+    let payload_len: u64 = match header & PAYLOAD_LEN_MASK {
+        126 => try!(stream.read_be_u16()) as u64,
+        127 => try!(stream.read_be_u64()),
+        x => x as u64,
+    };
 
     if mask {
         let _ = try!(stream.read(&mut mask_key));
