@@ -63,15 +63,11 @@ pub fn write_stream<T: Stream>(stream: &mut BufferedStream<T>, data: &Vec<u8>) {
     let fin = 0b1 << 15;        // FIN frame
     let opcode = 0b0001 << 8;   // text mode
     let mask = 0b0 << 7;        // no mask
-    let payload_len = if data.len() <= 125 {
-        // case: 7-bit data length will suffice
-        data.len()
-    } else if data.len() > 2.pow(16) {
-        // case: 64-bit data length
-        127
-    } else {
-        // case: 16-bit data length
-        126
+
+    let payload_len = match data.len() {
+        l if l <= 125 => l,
+        l if l > 2.pow(16) => 127,
+        _ => 126,
     } as u16;
 
     header = header | fin | opcode | mask | payload_len;
