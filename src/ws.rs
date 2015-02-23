@@ -22,33 +22,33 @@ use std::num::Int;
 //
 //   source: https://tools.ietf.org/html/rfc6455#section-5.2
 
-//static FIN_MASK:         u16 = 0b1000000000000000;
-//static RSV_MASK:         u16 = 0b0111000000000000;
-//static OPCODE_MASK:      u16 = 0b0000111100000000;
+static FIN_MASK:         u16 = 0b1000000000000000;
+static RSV_MASK:         u16 = 0b0111000000000000;
+static OPCODE_MASK:      u16 = 0b0000111100000000;
 static MASK_MASK:        u16 = 0b0000000010000000;
 static PAYLOAD_LEN_MASK: u16 = 0b0000000001111111;
 
-pub fn read_stream<T: Stream>(stream: &mut BufferedStream<T>) -> Vec<u8> {
+pub fn read_stream<T: Stream>(stream: &mut BufferedStream<T>) -> IoResult<Vec<u8>> {
     let mut mask_key = [0u8; 4];
-    let header = stream.read_be_u16().unwrap();
+    let header = try!(stream.read_be_u16());
 
-//  let fin: bool = ((header & FIN_MASK) >> 15) == 1;
-//  let rsv: u8 = ((header & RSV_MASK) >> 12) as u8;
-//  let opcode: u8 = ((header & OPCODE_MASK) >> 8) as u8;
+    let fin: bool = ((header & FIN_MASK) >> 15) == 1;
+    let rsv: u8 = ((header & RSV_MASK) >> 12) as u8;
+    let opcode: u8 = ((header & OPCODE_MASK) >> 8) as u8;
     let mask: bool = ((header & MASK_MASK) >> 7) == 1;
     let mut payload_len: u64 = (header & PAYLOAD_LEN_MASK) as u64;
 
     if payload_len == 126 {
-        payload_len = stream.read_be_u16().unwrap() as u64;
+        payload_len = try!(stream.read_be_u16()) as u64;
     } else if payload_len == 127 {
-        payload_len = stream.read_be_u64().unwrap();
+        payload_len = try!(stream.read_be_u64());
     }
 
     if mask {
-        let _ = stream.read(&mut mask_key).unwrap();
+        let _ = try!(stream.read(&mut mask_key));
     }
 
-    let mut data: Vec<u8> = stream.read_exact(payload_len as usize).unwrap();
+    let mut data: Vec<u8> = try!(stream.read_exact(payload_len as usize));
 
     if mask {
         for i in 0us..(payload_len as usize) {
@@ -56,7 +56,7 @@ pub fn read_stream<T: Stream>(stream: &mut BufferedStream<T>) -> Vec<u8> {
         }
     }
 
-    data 
+    Ok(data)
 }
 
 pub fn write_stream<T: Stream>(stream: &mut BufferedStream<T>, data: &Vec<u8>) {
@@ -76,7 +76,6 @@ pub fn write_stream<T: Stream>(stream: &mut BufferedStream<T>, data: &Vec<u8>) {
     } as u16;
 
     header = header | fin | opcode | mask | payload_len;
-    println!("header {:016b}", header);
 
     let _ = stream.write_be_u16(header);
 

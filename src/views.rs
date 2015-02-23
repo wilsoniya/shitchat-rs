@@ -46,7 +46,7 @@ pub fn ws(mut request: Request) -> (String, u32) {
     request.stream.write_all(res_str.as_slice().as_bytes()); 
     request.stream.flush();
 
-    chat::ChatClient::run("fart_bucket", request); 
+    chat::ChatClient::run(request); 
 
     (String::from_str("fin"), 200)
 } 
