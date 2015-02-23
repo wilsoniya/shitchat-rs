@@ -1,4 +1,4 @@
-use std::old_io::{Stream, BufferedStream};
+use std::old_io::{Stream, BufferedStream, IoResult};
 use std::num::Int;
 
 //    0                   1                   2                   3
@@ -22,21 +22,19 @@ use std::num::Int;
 //
 //   source: https://tools.ietf.org/html/rfc6455#section-5.2
 
-static FIN_MASK:         u16 = 0b1000000000000000;
-static RSV_MASK:         u16 = 0b0111000000000000;
-static OPCODE_MASK:      u16 = 0b0000111100000000;
+//static FIN_MASK:         u16 = 0b1000000000000000;
+//static RSV_MASK:         u16 = 0b0111000000000000;
+//static OPCODE_MASK:      u16 = 0b0000111100000000;
 static MASK_MASK:        u16 = 0b0000000010000000;
 static PAYLOAD_LEN_MASK: u16 = 0b0000000001111111;
 
 pub fn read_stream<T: Stream>(stream: &mut BufferedStream<T>) -> Vec<u8> {
-    let fart = b"the rain in spain";
-    let mut mask_key            = [0u8; 4];
-
+    let mut mask_key = [0u8; 4];
     let header = stream.read_be_u16().unwrap();
 
-    let fin: bool = ((header & FIN_MASK) >> 15) == 1;
-    let rsv: u8 = ((header & RSV_MASK) >> 12) as u8;
-    let opcode: u8 = ((header & OPCODE_MASK) >> 8) as u8;
+//  let fin: bool = ((header & FIN_MASK) >> 15) == 1;
+//  let rsv: u8 = ((header & RSV_MASK) >> 12) as u8;
+//  let opcode: u8 = ((header & OPCODE_MASK) >> 8) as u8;
     let mask: bool = ((header & MASK_MASK) >> 7) == 1;
     let mut payload_len: u64 = (header & PAYLOAD_LEN_MASK) as u64;
 
@@ -80,18 +78,18 @@ pub fn write_stream<T: Stream>(stream: &mut BufferedStream<T>, data: &Vec<u8>) {
     header = header | fin | opcode | mask | payload_len;
     println!("header {:016b}", header);
 
-    stream.write_be_u16(header);
+    let _ = stream.write_be_u16(header);
 
     if data.len() > 125 && data.len() > 2.pow(16) {
         // case: 64-bit data length
         let data_len: u64 = data.len() as u64;
-        stream.write_be_u64(data_len);
+        let _ = stream.write_be_u64(data_len);
     } else if data.len() > 125 {
         // case: 16-bit data length
         let data_len: u16 = data.len() as u16;
-        stream.write_be_u16(data_len);
+        let _ = stream.write_be_u16(data_len);
     };
 
-    stream.write(&data[..]);
-    stream.flush();
+    let _ = stream.write_all(&data[..]);
+    let _ = stream.flush();
 }

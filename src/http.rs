@@ -1,5 +1,26 @@
-
 use std::old_io::{TcpStream, BufferedStream};
+use std::sync::{Arc, Mutex};
+
+use chat::ChatServer;
+
+// Client request:
+// ===============
+//   GET /chat HTTP/1.1
+//   Host: server.example.com
+//   Upgrade: websocket
+//   Connection: Upgrade
+//   Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==
+//   Sec-WebSocket-Protocol: chat, superchat
+//   Sec-WebSocket-Version: 13
+//   Origin: http://example.com
+// 
+// Server response:
+// ================
+//   HTTP/1.1 101 Switching Protocols
+//   Upgrade: websocket
+//   Connection: Upgrade
+//   Sec-WebSocket-Accept: HSmrc0sMlYUkAGmm5OPpG2HaGWk=
+//   Sec-WebSocket-Protocol: chat 
 
 #[derive(Show)]
 pub enum HTTPMethod {GET, PUT, POST}
@@ -39,11 +60,13 @@ pub struct Request {
     pub protocol: String,
     pub headers: Vec<Header>, 
     pub stream: BufferedStream<TcpStream>,
+    pub chat_server: Arc<Mutex<ChatServer>>,
 }
 
 impl Request {
     pub fn new(request_lines: &Vec<String>, 
-               stream: BufferedStream<TcpStream>) -> Request {
+               stream: BufferedStream<TcpStream>, 
+               chat_server: Arc<Mutex<ChatServer>>) -> Request {
         let first_line = request_lines[0].clone();
 
         let frags: Vec<&str> = first_line
@@ -73,6 +96,7 @@ impl Request {
             protocol: protocol,
             headers: headers,
             stream: stream,
+            chat_server: chat_server,
         }
     }
 
@@ -85,5 +109,15 @@ impl Request {
             Some(ref h) => Some(h.value.clone()),
             None => None
         }
+    }
+
+    pub fn is_websocket(&self) -> bool {
+        let connection = self.get_header("Connection");
+        let upgrade = self.get_header("Upgrade");
+
+        let connection_string = Some(String::from_str("Upgrade"));
+        let upgrade_string = Some(String::from_str("websocket"));
+
+        (connection_string, upgrade_string) == (connection, upgrade) 
     }
 }

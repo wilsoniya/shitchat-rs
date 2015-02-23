@@ -1,13 +1,13 @@
 use std::old_io::timer::sleep;
 use std::time::duration::Duration; 
 use std::str::from_utf8;
+use http::Request;
 
 use sha1::Sha1;
-use rustc_serialize::base64::ToBase64;
-use rustc_serialize::base64::STANDARD;
+use rustc_serialize::base64::{ToBase64, STANDARD};
 
 use ws;
-use http::Request;
+use chat;
 
 static DOCUMENT: &'static str = include_str!("index.html");
 static WS_GUID: &'static str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -21,12 +21,11 @@ fn verify_key(key: &String) -> String {
     digest.as_slice().to_base64(STANDARD)
 }
 
-
-pub fn index(request: &mut Request) -> (String, u32) {
+pub fn index(request: Request) -> (String, u32) {
     (String::from_str(DOCUMENT), 200)
 }
 
-pub fn ws(request: &mut Request) -> (String, u32) {
+pub fn ws(mut request: Request) -> (String, u32) {
     let ws_key = request.get_header("Sec-WebSocket-Key").unwrap();
     let accept_key = verify_key(&ws_key);
     let accept_key_header = format!("Sec-WebSocket-Accept: {}", accept_key);
@@ -47,19 +46,15 @@ pub fn ws(request: &mut Request) -> (String, u32) {
     request.stream.write_all(res_str.as_slice().as_bytes()); 
     request.stream.flush();
 
-    while true {
-        let data = ws::read_stream(&mut request.stream); 
-        ws::write_stream(&mut request.stream, &data);
-        println!("{}", from_utf8(data.as_slice()).unwrap());
-    } 
+    chat::ChatClient::run("fart_bucket", request); 
 
     (String::from_str("fin"), 200)
 } 
 
-pub fn error_404(request: &mut Request) -> (String, u32) {
+pub fn error_404(request: Request) -> (String, u32) {
     (String::from_str("Not Found"), 404)
 }
 
-pub fn error_500(request: &mut Request) -> (String, u32) {
+pub fn error_500(request: Request) -> (String, u32) {
     (String::from_str("Internal Server Error"), 500)
 }
