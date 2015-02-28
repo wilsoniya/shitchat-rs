@@ -6,10 +6,12 @@ use std::str::from_utf8;
 use std::rand;
 use std::collections::HashMap;
 
+use rustc_serialize::json;
+
 use http::Request;
 use ws;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, RustcDecodable, RustcEncodable)]
 pub enum ChatEvent {
     TextMessage{
         user: Option<String>, 
@@ -29,8 +31,8 @@ pub enum ChatEvent {
 #[derive(Clone)]
 pub struct ChatClient {
     pub name: Option<String>,
-    pub msg_tx: Sender<ChatEvent>,
     pub client_id: i64,
+    msg_tx: Sender<ChatEvent>,
     server: Arc<Mutex<ChatServer>>,
 }
 
@@ -74,38 +76,35 @@ impl ChatClient {
         thread::spawn(move || {
             for event in rx.iter() {
                 match event {
-                    ChatEvent::TextMessage{client_id: client_id, 
-                        message: message, ..} => {
-                        let text = format!("client_id: {}; message: {}", 
-                                           client_id, message);
+                    ChatEvent::UserHangup{client_id: client_id, ..} 
+                        if client_id == client.client_id => {
+                            // case: client has signaled it's time to stop
+                            return
+                        },
+                    _ => {
+                        let text = json::encode(&event).unwrap();
                         ws::write_stream(&mut stream, &text.into_bytes());
-                    },
-                    ChatEvent::UserHangup{client_id: client_id, ..} => {
-                        if client_id == client.client_id {
-                            // case: this client has hung up; harakiri
-                            break;
-                        }
-                    },
-                    ChatEvent::UsernameRegistration{name: name, ..} => {
-                        // pass for now
                     }
                 }
             }
         });
     }
 
-    fn start_client_listener<T: Stream>(&self, stream: BufferedStream<T>) {
-        let mut stream = stream;
-        while true {
+    fn start_client_listener<T: Stream>(&self, mut stream: BufferedStream<T>) {
+        loop {
             match ws::read_stream(&mut stream) {
                 Ok(data) => {
-                    let message = String::from_str(from_utf8(&data[..]).unwrap());
-                    let event = ChatEvent::TextMessage{
-                        user: self.name.clone(), 
-                        message: message,
-                        client_id: self.client_id.clone(),
-                    };
-                    self.server.lock().unwrap().handle_client_event(event);
+                    let message = from_utf8(&data[..]).unwrap();
+                    match json::decode(message) {
+                        Ok(event) => {
+                          self.server.lock().unwrap()
+                              .handle_client_event(event);
+                        }
+                        Err(e) => {
+                            println!("Bad message from client: {} {}", 
+                                     message.trim(), e);
+                        }
+                    }
                 },
                 Err(e) => {
                     // case: user hung up; return and bail
@@ -118,7 +117,7 @@ impl ChatClient {
     pub fn send_event(&self, event: ChatEvent) {
         self.msg_tx.send(event); 
     }
-}
+
 
 pub struct ChatServer {
     clients: HashMap<i64, ChatClient>,
@@ -130,17 +129,23 @@ impl ChatServer {
     }
 
     pub fn add_client(&mut self, client: ChatClient) {
+        let client_id = client.client_id;
         self.clients.insert(client.client_id, client);
+        println!("client joined: {} ({} total clients)", client_id, 
+                 self.clients.len());
     }
 
     pub fn rm_client(&mut self, client: &ChatClient) {
         let _ = self.clients.remove(&client.client_id);
+        println!("client left: {} ({} total clients)", &client.client_id, 
+                 self.clients.len());
     }
 
     pub fn handle_client_event(&self, event: ChatEvent) {
-        println!("handling client event: {:?}", event);
+        println!("client event: {:?}", event);
         for client in self.clients.values() {
             client.send_event(event.clone()) 
         } 
+
     }
 }
