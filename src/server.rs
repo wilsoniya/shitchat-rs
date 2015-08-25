@@ -1,7 +1,11 @@
-use std::old_io::{TcpListener, TcpStream, BufferedStream};
-use std::old_io::{Acceptor, Listener};
+use std::net::{TcpListener, TcpStream};
+use std::io::BufRead;
+use std::io::{Write};
 use std::thread;
 use std::sync::{Arc, Mutex};
+use std::io::Result;
+
+use bufstream::BufStream;
 
 use http;
 use routes;
@@ -12,56 +16,57 @@ fn render_response(content: &str, status: u32) -> String {
     let content_len = format!("Content-Length: {}", content.len());
 
     let mut response: Vec<&str> = Vec::new();
-    response.push(status_line.as_slice());
+    response.push(&status_line[..]);
     response.push("Connection: Close");
-    response.push(content_len.as_slice());
+    response.push(&content_len[..]);
     response.push("");
-    response.push(content); 
+    response.push(content);
     response.connect("\r\n")
-} 
+}
 
 fn handle_client(stream: TcpStream, chat_server: Arc<Mutex<ChatServer>>) {
-    let stream2 = stream.clone();
-    let mut buf = BufferedStream::new(stream);
+    let stream2 = stream.try_clone().unwrap();
+    let mut buf = BufStream::new(stream);
     let mut request_lines = Vec::new();
 
     loop {
-        match buf.read_line() {
+        let mut line = String::new();
+        match buf.read_line(&mut line) {
             Err(e) => {
                 println!("break: {}", e);
                 break;
             }
-            Ok(line) => {
-                if line.as_slice().trim().len() == 0 {
+            Ok(_) => {
+                if (&line[..]).trim().len() == 0 {
                     break;
                 } else {
                     request_lines.push(
-                        String::from_str(line.as_slice().trim()));
+                        String::from((&line[..]).trim()));
                 }
             }
         }
     }
 
-    let mut request = http::Request::new(&request_lines, 
-                                         BufferedStream::new(stream2), 
+    let mut request = http::Request::new(&request_lines,
+                                         BufStream::new(stream2),
                                          chat_server);
     println!("{}\n", request_lines.connect("\n"));
-    let (response, status) = routes::route_request(request); 
+    let (response, status) = routes::route_request(request);
 
     let _ = buf.write_all(
-        render_response(response.as_slice(), status).as_bytes());
+        render_response(&response[..], status).as_bytes());
 }
 
-pub fn server(bind_addr: &str, port: u16) -> () {
+pub fn server(bind_addr: &str, port: u16) {
     let addr_str = format!("{}:{}", bind_addr, port);
-    let addr = addr_str.as_slice();
+    let addr = &addr_str[..];
     println!("listening on {}", addr);
-    let listener = TcpListener::bind(addr);
-    let mut acceptor = listener.listen();
+    let mut listener = TcpListener::bind(addr).unwrap();
+//  let (mut acceptor, _) = try!(listener.accept());
     let chat_server = Arc::new(Mutex::new(ChatServer::new()));
 
-    for conn in acceptor.incoming() {
-        match conn {
+    for stream in listener.incoming() {
+        match stream {
             Err(e) => {
                 println!("{}", e);
             }

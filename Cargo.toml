@@ -5,7 +5,11 @@ version = "0.0.1"
 authors = ["Michael Wilson <wilsoniya@gmail.com>"]
 
 [dependencies]
-sha1 = "0.0.6" 
+sha1 = "0.1.1"
+rustc-serialize = "0.3"
+bufstream = "0.1.1"
+rand = "0.3"
+byteorder = "0.3.11"
 
-[dependencies.rustc-serialize]
-git = "https://github.com/rust-lang/rustc-serialize"
+#[dependencies.rustc-serialize]
+#git = "https://github.com/rust-lang/rustc-serialize"

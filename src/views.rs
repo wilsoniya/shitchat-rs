@@ -1,8 +1,9 @@
-use std::old_io::timer::sleep;
-use std::time::duration::Duration; 
-use std::str::from_utf8;
+// use std::old_io::timer::sleep;
+// use std::time::duration::Duration;
+// use std::str::from_utf8;
 use http::Request;
 
+use std::io::Write;
 use sha1::Sha1;
 use rustc_serialize::base64::{ToBase64, STANDARD};
 
@@ -18,11 +19,11 @@ fn verify_key(key: &String) -> String {
     let mut sha = Sha1::new();
     sha.update(key.as_bytes());
     let digest: Vec<u8> = sha.digest();
-    digest.as_slice().to_base64(STANDARD)
+    digest.to_base64(STANDARD)
 }
 
 pub fn index(request: Request) -> (String, u32) {
-    (String::from_str(DOCUMENT), 200)
+    (String::from(DOCUMENT), 200)
 }
 
 pub fn ws(mut request: Request) -> (String, u32) {
@@ -30,12 +31,12 @@ pub fn ws(mut request: Request) -> (String, u32) {
     let accept_key = verify_key(&ws_key);
     let accept_key_header = format!("Sec-WebSocket-Accept: {}", accept_key);
 
-    let mut response: Vec<&str> = Vec::new(); 
+    let mut response: Vec<&str> = Vec::new();
 
     response.push("HTTP/1.1 101 Switching Protocols");
     response.push("Upgrade: websocket");
     response.push("Connection: Upgrade");
-    response.push(accept_key_header.as_slice());
+    response.push(&accept_key_header[..]);
     response.push("Sec-WebSocket-Protocol: chat");
     response.push("");
     response.push("");
@@ -43,18 +44,18 @@ pub fn ws(mut request: Request) -> (String, u32) {
     let res_str = response.connect("\r\n");
     print!("{}", res_str);
 
-    request.stream.write_all(res_str.as_slice().as_bytes()); 
+    request.stream.write_all(&res_str[..].as_bytes());
     request.stream.flush();
 
-    chat::ChatClient::run(request); 
+    chat::ChatClient::run(request);
 
-    (String::from_str("fin"), 200)
-} 
+    (String::from("fin"), 200)
+}
 
 pub fn error_404(request: Request) -> (String, u32) {
-    (String::from_str("Not Found"), 404)
+    (String::from("Not Found"), 404)
 }
 
 pub fn error_500(request: Request) -> (String, u32) {
-    (String::from_str("Internal Server Error"), 500)
+    (String::from("Internal Server Error"), 500)
 }

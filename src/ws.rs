@@ -1,5 +1,7 @@
-use std::old_io::{Stream, BufferedStream, IoResult};
-use std::num::Int;
+use std::io::{Read, Write};
+use std::io::Result;
+use bufstream::BufStream;
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 //    0                   1                   2                   3
 //    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -28,9 +30,9 @@ static OPCODE_MASK:      u16 = 0b0000111100000000;
 static MASK_MASK:        u16 = 0b0000000010000000;
 static PAYLOAD_LEN_MASK: u16 = 0b0000000001111111;
 
-pub fn read_stream<T: Stream>(stream: &mut BufferedStream<T>) -> IoResult<Vec<u8>> {
+pub fn read_stream<T: Read + Write>(stream: &mut BufStream<T>) -> Result<Vec<u8>> {
     let mut mask_key = [0u8; 4];
-    let header = try!(stream.read_be_u16());
+    let header = try!(stream.read_u16::<BigEndian>());
 
     let fin: bool = ((header & FIN_MASK) >> 15) == 1;
     let rsv: u8 = ((header & RSV_MASK) >> 12) as u8;
@@ -38,8 +40,8 @@ pub fn read_stream<T: Stream>(stream: &mut BufferedStream<T>) -> IoResult<Vec<u8
     let mask: bool = ((header & MASK_MASK) >> 7) == 1;
 
     let payload_len: u64 = match header & PAYLOAD_LEN_MASK {
-        126 => try!(stream.read_be_u16()) as u64,
-        127 => try!(stream.read_be_u64()),
+        126 => try!(stream.read_u16::<BigEndian>()) as u64,
+        127 => try!(stream.read_u64::<BigEndian>()),
         x => x as u64,
     };
 
@@ -47,10 +49,13 @@ pub fn read_stream<T: Stream>(stream: &mut BufferedStream<T>) -> IoResult<Vec<u8
         let _ = try!(stream.read(&mut mask_key));
     }
 
-    let mut data: Vec<u8> = try!(stream.read_exact(payload_len as usize));
+    let mut data: Vec<u8> = Vec::new();
+    stream.take(payload_len).read_to_end(&mut data);
+
+//  let mut data: Vec<u8> = try!(stream.read_exact(payload_len as usize));
 
     if mask {
-        for i in 0us..(payload_len as usize) {
+        for i in 0usize..(payload_len as usize) {
             data[i] = data[i] ^ mask_key[i % 4];
         }
     }
@@ -58,7 +63,7 @@ pub fn read_stream<T: Stream>(stream: &mut BufferedStream<T>) -> IoResult<Vec<u8
     Ok(data)
 }
 
-pub fn write_stream<T: Stream>(stream: &mut BufferedStream<T>, data: &Vec<u8>) {
+pub fn write_stream<T: Read + Write>(stream: &mut BufStream<T>, data: &Vec<u8>) {
     let mut header: u16 = 0b0;
     let fin = 0b1 << 15;        // FIN frame
     let opcode = 0b0001 << 8;   // text mode
@@ -66,22 +71,25 @@ pub fn write_stream<T: Stream>(stream: &mut BufferedStream<T>, data: &Vec<u8>) {
 
     let payload_len = match data.len() {
         l if l <= 125 => l,
-        l if l > 2.pow(16) => 127,
+        l if l > (2 as usize).pow(16) => 127,
         _ => 126,
     } as u16;
 
     header = header | fin | opcode | mask | payload_len;
 
-    let _ = stream.write_be_u16(header);
+//  let _ = stream.write_be_u16(header);
+    let _ = stream.write_u16::<BigEndian>(header);
 
-    if data.len() > 125 && data.len() > 2.pow(16) {
+    if data.len() > 125 && data.len() > (2 as usize).pow(16) {
         // case: 64-bit data length
         let data_len: u64 = data.len() as u64;
-        let _ = stream.write_be_u64(data_len);
+//      let _ = stream.write_be_u64(data_len);
+        let _ = stream.write_u64::<BigEndian>(data_len);
     } else if data.len() > 125 {
         // case: 16-bit data length
         let data_len: u16 = data.len() as u16;
-        let _ = stream.write_be_u16(data_len);
+//      let _ = stream.write_be_u16(data_len);
+        let _ = stream.write_u16::<BigEndian>(data_len);
     };
 
     let _ = stream.write_all(&data[..]);
