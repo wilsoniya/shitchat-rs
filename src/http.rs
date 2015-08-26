@@ -39,13 +39,14 @@ impl HTTPMethod {
 
 #[derive(Show)]
 pub struct Header {
-    key: String,
-    value: String,
+    pub key: String,
+    pub value: String,
 }
 
 impl Header {
     fn from_str(string: &str) -> Header {
-        let mut kv = string.splitn(1, ':');
+        println!("header: {}", string);
+        let mut kv = string.splitn(2, ':');
         let key = String::from(kv.next().unwrap());
         let value = String::from(kv.next().unwrap().trim_left());
         Header {

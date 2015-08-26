@@ -1,7 +1,7 @@
 // use std::old_io::timer::sleep;
 // use std::time::duration::Duration;
 // use std::str::from_utf8;
-use http::Request;
+use http::{Request, Header};
 
 use std::io::Write;
 use sha1::Sha1;
@@ -37,7 +37,9 @@ pub fn ws(mut request: Request) -> (String, u32) {
     response.push("Upgrade: websocket");
     response.push("Connection: Upgrade");
     response.push(&accept_key_header[..]);
-    response.push("Sec-WebSocket-Protocol: chat");
+    if request.headers.iter().filter(|h| {h.key == "Sec-WebSocket-Protocol" && h.value == "chat"}).collect::<Vec<&Header>>().len() == 1 {
+        response.push("Sec-WebSocket-Protocol: chat");
+    }
     response.push("");
     response.push("");
 
