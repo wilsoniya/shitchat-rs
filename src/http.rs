@@ -69,7 +69,7 @@ impl Request {
     pub fn new(request_lines: &Vec<String>,
                stream: BufStream<TcpStream>,
                chat_server: Arc<Mutex<ChatServer>>) -> Request {
-        let first_line = request_lines[0].clone();
+        let first_line = &request_lines[0];
 
         let frags: &Vec<&str> = &first_line[..]
             .trim()
